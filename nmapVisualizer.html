@@ -1,0 +1,1041 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>nmap Visualizer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg:#0a0c10; --surface:#111419; --surface2:#181c23;
+  --border:#1e2530; --border2:#2a3340;
+  --text:#c8d4e0; --text-muted:#5a6b7a; --text-dim:#3a4855;
+  --green:#2ecc71; --green-dim:#1a4a2e; --green-glow:rgba(46,204,113,.12);
+  --red:#e74c3c; --orange:#f39c12; --blue:#3498db;
+  --purple:#9b59b6; --cyan:#1abc9c;
+  --risk-crit:#ff3b3b; --risk-high:#e74c3c; --risk-med:#f39c12;
+  --mono:'Space Mono',monospace; --sans:'Inter',sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{background:var(--bg);color:var(--text);font-family:var(--sans);min-height:100vh;overflow-x:hidden;}
+body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradient(0deg,transparent,transparent 3px,rgba(255,255,255,.007) 3px,rgba(255,255,255,.007) 4px);pointer-events:none;z-index:0;}
+.app{position:relative;z-index:1;}
+ 
+header{display:flex;align-items:center;gap:12px;padding:0 24px;height:52px;border-bottom:1px solid var(--border);background:rgba(10,12,16,.97);backdrop-filter:blur(8px);position:sticky;top:0;z-index:200;}
+.logo{font-family:var(--mono);font-size:12px;color:var(--green);letter-spacing:.15em;display:flex;align-items:center;gap:7px;flex-shrink:0;}
+.logo-dot{width:7px;height:7px;background:var(--green);border-radius:50%;animation:pulse 2s ease-in-out infinite;}
+@keyframes pulse{0%,100%{opacity:1;box-shadow:0 0 6px var(--green);}50%{opacity:.4;box-shadow:none;}}
+.nav-tabs{display:flex;gap:2px;margin-left:12px;}
+.nav-tab{font-family:var(--mono);font-size:10px;letter-spacing:.06em;padding:5px 11px;border-radius:5px;border:1px solid transparent;background:transparent;color:var(--text-muted);cursor:pointer;transition:all .15s;white-space:nowrap;}
+.nav-tab:hover{color:var(--text);background:rgba(255,255,255,.04);}
+.nav-tab.active{color:var(--cyan);border-color:rgba(26,188,156,.3);background:rgba(26,188,156,.07);}
+.search-wrap{flex:1;max-width:340px;position:relative;margin:0 8px;}
+.search-input{width:100%;height:32px;background:rgba(255,255,255,.04);border:1px solid var(--border2);border-radius:6px;color:var(--text);font-family:var(--mono);font-size:11px;padding:0 30px 0 30px;outline:none;transition:border-color .2s,background .2s;}
+.search-input:focus{border-color:var(--cyan);background:rgba(26,188,156,.05);}
+.search-input::placeholder{color:var(--text-dim);}
+.search-icon{position:absolute;left:9px;top:50%;transform:translateY(-50%);color:var(--text-dim);pointer-events:none;font-size:12px;}
+.search-clear{position:absolute;right:7px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:13px;line-height:1;padding:2px 4px;border-radius:3px;display:none;}
+.search-hints{position:absolute;top:calc(100% + 6px);left:0;right:0;background:var(--surface2);border:1px solid var(--border2);border-radius:8px;padding:10px;z-index:300;display:none;}
+.search-hints.visible{display:block;}
+.hint-row{display:flex;gap:5px;flex-wrap:wrap;margin-bottom:5px;align-items:center;}
+.hint-row:last-child{margin-bottom:0;}
+.hint-label{font-family:var(--mono);font-size:9px;color:var(--text-dim);letter-spacing:.1em;text-transform:uppercase;width:54px;flex-shrink:0;}
+.hint-chip{font-family:var(--mono);font-size:10px;padding:2px 7px;border-radius:4px;border:1px solid var(--border2);color:var(--text-muted);cursor:pointer;background:transparent;transition:all .12s;}
+.hint-chip:hover{border-color:var(--cyan);color:var(--cyan);background:rgba(26,188,156,.07);}
+.header-right{margin-left:auto;display:flex;align-items:center;gap:10px;}
+.stat-chip{font-family:var(--mono);font-size:10px;color:var(--text-muted);white-space:nowrap;}
+.stat-chip b{color:var(--text);font-weight:700;}
+.export-btn{font-family:var(--mono);font-size:10px;padding:5px 12px;border-radius:5px;border:1px solid rgba(26,188,156,.3);background:rgba(26,188,156,.07);color:var(--cyan);cursor:pointer;transition:all .12s;display:none;}
+.export-btn:hover{background:rgba(26,188,156,.16);}
+ 
+.main{display:grid;grid-template-columns:285px 1fr;height:calc(100vh - 52px);}
+.sidebar{border-right:1px solid var(--border);overflow-y:auto;background:var(--surface);}
+.sidebar::-webkit-scrollbar{width:3px;}
+.sidebar::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px;}
+.content{overflow-y:auto;padding:22px 26px;background:var(--bg);}
+.content::-webkit-scrollbar{width:4px;}
+.content::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px;}
+ 
+.sidebar-section{border-bottom:1px solid var(--border);padding:11px 14px;}
+.sidebar-label{font-family:var(--mono);font-size:9px;letter-spacing:.18em;color:var(--text-dim);text-transform:uppercase;margin-bottom:8px;}
+.upload-zone{border:1px dashed var(--border2);border-radius:7px;padding:18px 10px;text-align:center;cursor:pointer;transition:all .2s;background:rgba(255,255,255,.015);position:relative;}
+.upload-zone:hover,.upload-zone.drag-over{border-color:var(--green);background:var(--green-glow);}
+.upload-zone input[type="file"]{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%;}
+.upload-icon{width:20px;height:20px;margin:0 auto 5px;opacity:.35;}
+.upload-text{font-size:11px;color:var(--text-muted);line-height:1.6;}
+.upload-text em{color:var(--green);font-style:normal;}
+.paste-area{width:100%;min-height:75px;background:rgba(0,0,0,.3);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--mono);font-size:10px;padding:7px 9px;resize:vertical;outline:none;line-height:1.6;transition:border-color .2s;}
+.paste-area:focus{border-color:var(--green);}
+.paste-area::placeholder{color:var(--text-dim);}
+.parse-btn{margin-top:5px;width:100%;padding:6px;background:rgba(46,204,113,.1);border:1px solid rgba(46,204,113,.3);border-radius:5px;color:var(--green);font-family:var(--mono);font-size:11px;cursor:pointer;letter-spacing:.05em;transition:all .15s;}
+.parse-btn:hover{background:rgba(46,204,113,.2);}
+.diff-upload-btn{width:100%;padding:6px;background:transparent;border:1px solid var(--border2);border-radius:5px;color:var(--text-muted);font-family:var(--mono);font-size:10px;cursor:pointer;transition:all .15s;position:relative;display:block;text-align:center;}
+.diff-upload-btn:hover{border-color:var(--orange);color:var(--orange);}
+.diff-upload-btn input{position:absolute;inset:0;opacity:0;cursor:pointer;}
+.diff-loaded{font-family:var(--mono);font-size:9px;color:var(--green);padding:3px 0;}
+.host-item{display:flex;align-items:center;gap:7px;padding:6px 9px;border-radius:5px;cursor:pointer;margin-bottom:2px;transition:background .12s;border:1px solid transparent;}
+.host-item:hover{background:rgba(255,255,255,.03);}
+.host-item.active{background:rgba(46,204,113,.07);border-color:rgba(46,204,113,.18);}
+.host-dot{width:5px;height:5px;border-radius:50%;background:var(--green);flex-shrink:0;}
+.host-dot.down{background:var(--red);}
+.host-ip{font-family:var(--mono);font-size:11px;color:var(--text);flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.host-risk{font-size:9px;font-family:var(--mono);font-weight:700;padding:1px 5px;border-radius:3px;flex-shrink:0;}
+.risk-CRITICAL{background:rgba(255,59,59,.2);color:var(--risk-crit);border:1px solid rgba(255,59,59,.28);}
+.risk-HIGH{background:rgba(231,76,60,.14);color:var(--risk-high);border:1px solid rgba(231,76,60,.22);}
+.risk-MEDIUM{background:rgba(243,156,18,.1);color:var(--orange);border:1px solid rgba(243,156,18,.18);}
+.risk-LOW{background:rgba(52,152,219,.1);color:var(--blue);border:1px solid rgba(52,152,219,.18);}
+.risk-INFO{background:rgba(46,204,113,.08);color:var(--green);border:1px solid rgba(46,204,113,.16);}
+.demo-item{font-family:var(--mono);font-size:10px;padding:5px 8px;border-radius:4px;border:1px solid var(--border);background:transparent;color:var(--text-muted);cursor:pointer;text-align:left;transition:all .12s;width:100%;margin-bottom:2px;display:block;}
+.demo-item:hover{border-color:var(--green);color:var(--green);background:var(--green-glow);}
+ 
+@keyframes fadeIn{from{opacity:0;transform:translateY(5px);}to{opacity:1;transform:translateY(0);}}
+.animate-in{animation:fadeIn .22s ease forwards;}
+.section-title{font-family:var(--mono);font-size:9px;letter-spacing:.16em;text-transform:uppercase;color:var(--text-muted);margin-bottom:10px;}
+.empty-state{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;text-align:center;}
+.empty-terminal{font-family:var(--mono);font-size:12px;color:var(--text-dim);line-height:2.2;}
+.empty-terminal .cg{color:var(--green);} .empty-terminal .cb{color:var(--blue);}
+ 
+.metrics-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:9px;margin-bottom:18px;}
+.metric-card{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:11px 13px;position:relative;overflow:hidden;}
+.metric-card::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:var(--accent,var(--green));opacity:.5;}
+.metric-label{font-family:var(--mono);font-size:9px;letter-spacing:.13em;color:var(--text-muted);text-transform:uppercase;margin-bottom:4px;}
+.metric-value{font-family:var(--mono);font-size:21px;font-weight:700;line-height:1;color:var(--accent,var(--green));}
+ 
+.risk-banner{border-radius:8px;padding:12px 16px;margin-bottom:14px;border:1px solid;}
+.risk-banner.crit{background:rgba(255,59,59,.06);border-color:rgba(255,59,59,.18);}
+.risk-banner.high{background:rgba(231,76,60,.05);border-color:rgba(231,76,60,.15);}
+.risk-banner.med{background:rgba(243,156,18,.05);border-color:rgba(243,156,18,.13);}
+.risk-banner-title{font-family:var(--mono);font-size:11px;font-weight:700;margin-bottom:7px;display:flex;align-items:center;gap:7px;}
+.risk-findings{display:flex;flex-direction:column;gap:4px;}
+.risk-finding{font-size:12px;color:var(--text-muted);display:flex;align-items:flex-start;gap:8px;line-height:1.5;}
+.risk-finding-port{font-family:var(--mono);font-size:11px;color:var(--cyan);flex-shrink:0;width:76px;}
+.cve-badge{font-family:var(--mono);font-size:9px;padding:1px 5px;border-radius:3px;background:rgba(231,76,60,.14);color:var(--red);border:1px solid rgba(231,76,60,.18);cursor:default;flex-shrink:0;}
+ 
+.port-heatmap{padding:14px 16px;background:var(--surface);border:1px solid var(--border);border-radius:9px;margin-bottom:20px;}
+.heatmap-grid{display:flex;flex-wrap:wrap;gap:3px;}
+.heat-cell{width:12px;height:12px;border-radius:2px;cursor:default;transition:transform .1s;}
+.heat-cell:hover{transform:scale(1.65);z-index:10;}
+.heat-cell.open{background:var(--green);opacity:.78;}
+.heat-cell.closed{background:var(--red);opacity:.3;}
+.heat-cell.filtered{background:var(--orange);opacity:.45;}
+.heat-cell.flag{outline:2px solid var(--risk-crit);outline-offset:1px;opacity:1!important;}
+ 
+.host-section{margin-bottom:16px;background:var(--surface);border:1px solid var(--border);border-radius:9px;overflow:hidden;}
+.host-header{display:flex;align-items:center;gap:9px;padding:10px 14px;border-bottom:1px solid var(--border);background:rgba(255,255,255,.015);cursor:pointer;user-select:none;}
+.host-header:hover{background:rgba(255,255,255,.025);}
+.host-badge{font-family:var(--mono);font-size:12px;font-weight:700;color:var(--green);}
+.host-hostname{font-size:11px;color:var(--text-muted);font-style:italic;}
+.host-os-badge{font-family:var(--mono);font-size:9px;padding:2px 6px;border-radius:3px;border:1px solid var(--border2);color:var(--text-muted);}
+.host-collapse-btn{margin-left:auto;font-size:11px;color:var(--text-dim);transition:transform .18s;font-family:var(--mono);}
+.host-collapse-btn.collapsed{transform:rotate(-90deg);}
+.host-body.collapsed{display:none;}
+ 
+.ports-table{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:11px;}
+.ports-table th{text-align:left;padding:6px 12px;font-size:9px;letter-spacing:.13em;text-transform:uppercase;color:var(--text-dim);border-bottom:1px solid var(--border);font-weight:400;}
+.ports-table td{padding:6px 12px;border-bottom:1px solid rgba(30,37,48,.45);vertical-align:middle;}
+.ports-table tr:last-child td{border-bottom:none;}
+.ports-table tr:hover td{background:rgba(255,255,255,.016);}
+.port-num{color:var(--cyan);font-weight:700;font-size:12px;}
+.proto-badge{font-size:9px;padding:1px 5px;border-radius:3px;font-weight:700;letter-spacing:.07em;}
+.proto-tcp{background:rgba(52,152,219,.14);color:var(--blue);}
+.proto-udp{background:rgba(155,89,182,.14);color:var(--purple);}
+.state-badge{display:inline-flex;align-items:center;gap:4px;font-size:9px;padding:2px 6px;border-radius:3px;font-weight:700;letter-spacing:.04em;}
+.state-open{background:var(--green-dim);color:var(--green);border:1px solid rgba(46,204,113,.18);}
+.state-closed{background:rgba(231,76,60,.09);color:var(--red);border:1px solid rgba(231,76,60,.18);}
+.state-filtered{background:rgba(243,156,18,.09);color:var(--orange);border:1px solid rgba(243,156,18,.18);}
+.state-dot{width:4px;height:4px;border-radius:50%;background:currentColor;}
+.service-name{color:var(--text);}
+.service-version{color:var(--text-muted);font-size:10px;}
+.flag-row td{background:rgba(255,59,59,.035)!important;}
+.flag-icon{color:var(--risk-crit);font-size:10px;cursor:help;}
+.note-input{background:transparent;border:none;outline:none;color:var(--text-muted);font-family:var(--sans);font-size:11px;width:100%;cursor:text;padding:0;min-width:80px;}
+.note-input::placeholder{color:var(--text-dim);}
+.note-input:focus{color:var(--text);}
+.status-badge{font-family:var(--mono);font-size:9px;padding:1px 6px;border-radius:3px;cursor:pointer;transition:all .12s;border:1px solid var(--border2);color:var(--text-dim);background:transparent;white-space:nowrap;}
+.status-badge.reviewed{background:rgba(46,204,113,.09);color:var(--green);border-color:rgba(46,204,113,.18);}
+.status-badge.exploited{background:rgba(231,76,60,.09);color:var(--red);border-color:rgba(231,76,60,.18);}
+ 
+.filter-row{display:flex;gap:5px;flex-wrap:wrap;}
+.filter-btn{font-family:var(--mono);font-size:9px;padding:3px 9px;border-radius:4px;border:1px solid var(--border2);background:transparent;color:var(--text-muted);cursor:pointer;letter-spacing:.04em;transition:all .12s;}
+.filter-btn.active-all{border-color:var(--cyan);color:var(--cyan);background:rgba(26,188,156,.07);}
+.filter-btn.active-open{border-color:var(--green);color:var(--green);background:rgba(46,204,113,.07);}
+.filter-btn.active-closed{border-color:var(--red);color:var(--red);background:rgba(231,76,60,.07);}
+.filter-btn.active-filtered{border-color:var(--orange);color:var(--orange);background:rgba(243,156,18,.07);}
+ 
+.search-results-page{animation:fadeIn .2s ease;}
+.search-header{display:flex;align-items:baseline;gap:10px;margin-bottom:16px;padding-bottom:10px;border-bottom:1px solid var(--border);}
+.search-query-display{font-family:var(--mono);font-size:14px;color:var(--cyan);}
+.search-count{font-family:var(--mono);font-size:10px;color:var(--text-muted);}
+.search-back{margin-left:auto;font-family:var(--mono);font-size:10px;padding:4px 10px;border-radius:4px;border:1px solid var(--border2);background:transparent;color:var(--text-muted);cursor:pointer;transition:all .12s;}
+.search-back:hover{color:var(--text);}
+.search-group{margin-bottom:12px;background:var(--surface);border:1px solid var(--border);border-radius:8px;overflow:hidden;}
+.search-group-header{display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--border);background:rgba(255,255,255,.018);}
+.search-group-ip{font-family:var(--mono);font-size:12px;font-weight:700;color:var(--green);}
+.search-group-hostname{font-size:11px;color:var(--text-muted);font-style:italic;}
+.search-group-os{font-family:var(--mono);font-size:9px;padding:1px 6px;border-radius:3px;border:1px solid var(--border2);color:var(--text-muted);margin-left:auto;}
+.search-match-count{font-family:var(--mono);font-size:9px;color:var(--cyan);background:rgba(26,188,156,.09);border:1px solid rgba(26,188,156,.18);padding:1px 6px;border-radius:3px;}
+.search-result-row{display:grid;grid-template-columns:60px 44px 96px 1fr;gap:0;padding:6px 12px;border-bottom:1px solid rgba(30,37,48,.4);align-items:center;font-family:var(--mono);font-size:11px;}
+.search-result-row:last-child{border-bottom:none;}
+.search-result-row:hover{background:rgba(255,255,255,.016);}
+.match-highlight{background:rgba(26,188,156,.15);color:var(--cyan);border-radius:2px;padding:0 2px;}
+.no-results{text-align:center;padding:36px 16px;font-family:var(--mono);font-size:12px;color:var(--text-dim);}
+.no-results span{color:var(--cyan);}
+ 
+.analysis-page{animation:fadeIn .2s ease;}
+.analysis-card{background:var(--surface);border:1px solid var(--border);border-radius:9px;margin-bottom:16px;overflow:hidden;}
+.analysis-card-header{padding:10px 16px;border-bottom:1px solid var(--border);background:rgba(255,255,255,.014);font-family:var(--mono);font-size:9px;color:var(--text-muted);letter-spacing:.12em;text-transform:uppercase;}
+.analysis-card-body{padding:14px 16px;}
+.svc-row{display:grid;grid-template-columns:72px 130px 1fr 55px;gap:0;padding:6px 0;border-bottom:1px solid rgba(30,37,48,.35);align-items:center;font-family:var(--mono);font-size:11px;cursor:pointer;}
+.svc-row:last-child{border-bottom:none;}
+.svc-row:hover{background:rgba(255,255,255,.015);margin:0 -16px;padding:6px 16px;}
+.bar-row{display:flex;align-items:center;gap:9px;padding:4px 0;font-family:var(--mono);font-size:11px;cursor:pointer;}
+.bar-row:hover{opacity:.8;}
+.bar-track{flex:1;height:4px;background:var(--border2);border-radius:2px;overflow:hidden;}
+.bar-fill{height:100%;border-radius:2px;}
+.host-tag{font-family:var(--mono);font-size:9px;padding:1px 6px;border-radius:3px;background:rgba(26,188,156,.07);color:var(--cyan);border:1px solid rgba(26,188,156,.14);cursor:pointer;margin:2px;}
+.host-tag:hover{background:rgba(26,188,156,.18);}
+ 
+.diff-page{animation:fadeIn .2s ease;}
+.diff-group{margin-bottom:14px;background:var(--surface);border:1px solid var(--border);border-radius:8px;overflow:hidden;}
+.diff-group-header{padding:9px 12px;border-bottom:1px solid var(--border);background:rgba(255,255,255,.018);display:flex;align-items:center;gap:8px;}
+.diff-row{display:grid;grid-template-columns:60px 44px 44px 96px 1fr 80px;gap:0;padding:6px 12px;border-bottom:1px solid rgba(30,37,48,.35);font-family:var(--mono);font-size:11px;align-items:center;}
+.diff-row:last-child{border-bottom:none;}
+.diff-new{background:rgba(46,204,113,.05);}
+.diff-removed{background:rgba(231,76,60,.05);}
+.diff-changed{background:rgba(243,156,18,.04);}
+.diff-badge{font-size:9px;font-weight:700;padding:1px 6px;border-radius:3px;letter-spacing:.04em;white-space:nowrap;}
+.diff-new-b{background:rgba(46,204,113,.14);color:var(--green);border:1px solid rgba(46,204,113,.18);}
+.diff-rem-b{background:rgba(231,76,60,.11);color:var(--red);border:1px solid rgba(231,76,60,.18);}
+.diff-chg-b{background:rgba(243,156,18,.1);color:var(--orange);border:1px solid rgba(243,156,18,.16);}
+.diff-stat-new{color:var(--green);font-family:var(--mono);font-size:9px;}
+.diff-stat-rem{color:var(--red);font-family:var(--mono);font-size:9px;}
+.diff-stat-chg{color:var(--orange);font-family:var(--mono);font-size:9px;}
+ 
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:500;display:flex;align-items:center;justify-content:center;animation:fadeIn .14s ease;}
+.modal{background:var(--surface);border:1px solid var(--border2);border-radius:12px;width:560px;max-width:90vw;max-height:82vh;display:flex;flex-direction:column;}
+.modal-header{padding:14px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;}
+.modal-title{font-family:var(--mono);font-size:12px;color:var(--text);letter-spacing:.1em;}
+.modal-close{background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:18px;line-height:1;padding:2px 6px;border-radius:4px;}
+.modal-close:hover{color:var(--text);}
+.modal-body{padding:16px 18px;overflow-y:auto;flex:1;}
+.modal-footer{padding:10px 18px;border-top:1px solid var(--border);display:flex;gap:7px;justify-content:flex-end;}
+.export-tabs{display:flex;gap:4px;margin-bottom:14px;}
+.etab{font-family:var(--mono);font-size:10px;padding:4px 11px;border-radius:5px;border:1px solid var(--border2);background:transparent;color:var(--text-muted);cursor:pointer;transition:all .12s;}
+.etab.active{color:var(--cyan);border-color:rgba(26,188,156,.3);background:rgba(26,188,156,.07);}
+.export-preview{background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:11px;font-family:var(--mono);font-size:10px;color:var(--text-muted);white-space:pre-wrap;word-break:break-all;max-height:300px;overflow-y:auto;line-height:1.7;}
+.mbtn{font-family:var(--mono);font-size:10px;padding:6px 13px;border-radius:5px;border:1px solid var(--border2);background:transparent;color:var(--text-muted);cursor:pointer;transition:all .12s;}
+.mbtn:hover{border-color:var(--green);color:var(--green);}
+.mbtn.p{border-color:rgba(26,188,156,.35);color:var(--cyan);background:rgba(26,188,156,.07);}
+.mbtn.p:hover{background:rgba(26,188,156,.16);}
+ 
+.kbd-help{position:fixed;bottom:14px;right:14px;background:var(--surface2);border:1px solid var(--border2);border-radius:8px;padding:11px 15px;font-family:var(--mono);font-size:10px;color:var(--text-muted);z-index:400;animation:fadeIn .18s ease;min-width:195px;}
+.kbd-help-title{color:var(--text);margin-bottom:7px;letter-spacing:.08em;}
+.kbd-row{display:flex;justify-content:space-between;gap:14px;padding:2px 0;}
+.kbd-key{color:var(--cyan);}
+.toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:var(--surface2);border:1px solid var(--border2);border-radius:6px;padding:7px 15px;font-family:var(--mono);font-size:11px;color:var(--text);z-index:600;animation:fadeIn .18s ease;pointer-events:none;}
+.cve-popup{position:fixed;background:var(--surface2);border:1px solid var(--border2);border-radius:8px;padding:11px 13px;max-width:290px;z-index:400;font-size:12px;line-height:1.6;color:var(--text-muted);animation:fadeIn .14s ease;pointer-events:none;}
+.cve-popup-title{font-family:var(--mono);font-size:10px;color:var(--red);margin-bottom:5px;}
+.cve-entry{margin-bottom:5px;padding-bottom:5px;border-bottom:1px solid var(--border);}
+.cve-entry:last-child{margin-bottom:0;padding-bottom:0;border-bottom:none;}
+.cve-id{font-family:var(--mono);font-size:10px;color:var(--orange);}
+</style>
+</head>
+<body>
+<div class="app">
+<header>
+  <div class="logo"><div class="logo-dot"></div>NMAP · RECON</div>
+  <div class="nav-tabs">
+    <button class="nav-tab active" id="tab-hosts" onclick="switchTab('hosts')">HOSTS</button>
+    <button class="nav-tab" id="tab-analysis" onclick="switchTab('analysis')">ANALYSIS</button>
+    <button class="nav-tab" id="tab-diff" onclick="switchTab('diff')">DIFF</button>
+  </div>
+  <div class="search-wrap" id="search-wrap">
+    <span class="search-icon">⌕</span>
+    <input class="search-input" id="search-input" type="text" placeholder="port, service, IP, hostname…" autocomplete="off" spellcheck="false" oninput="onSearchInput(this.value)" onkeydown="onSearchKey(event)" onfocus="showHints()">
+    <button class="search-clear" id="search-clear" onclick="clearSearch()">✕</button>
+    <div class="search-hints" id="search-hints">
+      <div class="hint-row"><span class="hint-label">Port</span>
+        <button class="hint-chip" onclick="applyHint('22')">22</button><button class="hint-chip" onclick="applyHint('80')">80</button><button class="hint-chip" onclick="applyHint('443')">443</button><button class="hint-chip" onclick="applyHint('445')">445</button><button class="hint-chip" onclick="applyHint('3389')">3389</button><button class="hint-chip" onclick="applyHint('21')">21</button><button class="hint-chip" onclick="applyHint('23')">23</button>
+      </div>
+      <div class="hint-row"><span class="hint-label">Service</span>
+        <button class="hint-chip" onclick="applyHint('ssh')">ssh</button><button class="hint-chip" onclick="applyHint('http')">http</button><button class="hint-chip" onclick="applyHint('smb')">smb</button><button class="hint-chip" onclick="applyHint('mysql')">mysql</button><button class="hint-chip" onclick="applyHint('rdp')">rdp</button><button class="hint-chip" onclick="applyHint('redis')">redis</button><button class="hint-chip" onclick="applyHint('ftp')">ftp</button>
+      </div>
+      <div class="hint-row"><span class="hint-label">State</span>
+        <button class="hint-chip" onclick="applyHint('open')">open</button><button class="hint-chip" onclick="applyHint('filtered')">filtered</button><button class="hint-chip" onclick="applyHint('closed')">closed</button>
+      </div>
+    </div>
+  </div>
+  <div class="header-right">
+    <span class="stat-chip" id="header-stats"></span>
+    <button class="export-btn" id="export-btn" onclick="openExport()">⬇ EXPORT</button>
+    <span style="font-family:var(--mono);font-size:9px;padding:2px 5px;border-radius:3px;border:1px solid var(--border2);color:var(--text-dim);cursor:default">?</span>
+  </div>
+</header>
+<div class="main">
+  <aside class="sidebar">
+    <div class="sidebar-section">
+      <div class="sidebar-label">Upload File</div>
+      <div class="upload-zone" id="drop-zone">
+        <input type="file" id="file-input" accept=".txt,.xml,.nmap,.gnmap">
+        <svg class="upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 13h6m-3-3v6m5 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <div class="upload-text">Drop <em>.txt / .xml / .gnmap</em><br>or click to browse</div>
+      </div>
+    </div>
+    <div class="sidebar-section">
+      <div class="sidebar-label">Paste Output</div>
+      <textarea class="paste-area" id="paste-area" placeholder="Paste nmap output…&#10;Supports: normal, XML, grepable"></textarea>
+      <button class="parse-btn" onclick="parseFromTextarea()">▶ PARSE</button>
+    </div>
+    <div class="sidebar-section">
+      <div class="sidebar-label">Diff — Baseline Scan</div>
+      <label class="diff-upload-btn">
+        <input type="file" id="diff-file-input" accept=".txt,.xml,.nmap,.gnmap">
+        ⬆ Load Baseline Scan
+      </label>
+      <div class="diff-loaded" id="diff-loaded" style="display:none"></div>
+    </div>
+    <div class="sidebar-section">
+      <div class="sidebar-label">Demo Scans</div>
+      <button class="demo-item" onclick="loadDemo('basic')">Basic TCP scan (3 hosts)</button>
+      <button class="demo-item" onclick="loadDemo('web')">Web server cluster</button>
+      <button class="demo-item" onclick="loadDemo('network')">Corporate network range</button>
+    </div>
+    <div class="sidebar-section" id="host-list-section" style="display:none">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:7px;">
+        <div class="sidebar-label" style="margin:0">Hosts</div>
+        <button style="font-family:var(--mono);font-size:9px;background:none;border:none;color:var(--text-dim);cursor:pointer;" onclick="showAllHosts()">ALL</button>
+      </div>
+      <div id="host-list"></div>
+    </div>
+  </aside>
+  <main class="content" id="content">
+    <div class="empty-state">
+      <div class="empty-terminal">
+        <div><span class="cg">$</span> nmap -sV -p- 192.168.1.0/24</div>
+        <div style="color:var(--text-dim)">Starting Nmap 7.94…</div>
+        <div style="color:var(--text-dim)">──────────────────────────</div>
+        <div><span class="cb">→</span> Upload, paste, or load a demo</div>
+        <div><span class="cb">→</span> Press <span style="color:var(--cyan)">?</span> for shortcuts</div>
+      </div>
+    </div>
+  </main>
+</div>
+</div>
+<script>
+/* ── RISK DB ── */
+const RISKDB={
+  21:{l:'HIGH',msg:'FTP — plaintext creds, anonymous auth common',cves:[{id:'CVE-2011-2523',d:'vsftpd 2.3.4 backdoor (connects port 6200)'},{id:'CVE-2010-4221',d:'ProFTPD 1.3.3c remote code execution'}]},
+  22:{l:'MEDIUM',msg:'SSH — brute-force target; check for weak keys/ciphers',cves:[{id:'CVE-2023-38408',d:'OpenSSH <9.3p2 ssh-agent RCE'}]},
+  23:{l:'CRITICAL',msg:'Telnet — cleartext protocol, credentials fully exposed',cves:[]},
+  25:{l:'MEDIUM',msg:'SMTP — open relay check; VRFY user enumeration',cves:[]},
+  53:{l:'LOW',msg:'DNS — zone transfer attempt; version disclosure',cves:[{id:'CVE-2021-25216',d:'BIND9 TKEY DoS'}]},
+  80:{l:'LOW',msg:'HTTP — plaintext web traffic',cves:[]},
+  110:{l:'MEDIUM',msg:'POP3 — plaintext email credentials',cves:[]},
+  111:{l:'HIGH',msg:'RPC portmapper — NFS/NIS exposure vector',cves:[]},
+  135:{l:'HIGH',msg:'MSRPC — lateral movement, DCOM exploitation',cves:[]},
+  139:{l:'HIGH',msg:'NetBIOS — SMB/NBNS enumeration and relay attacks',cves:[]},
+  143:{l:'MEDIUM',msg:'IMAP — plaintext email; brute-force target',cves:[]},
+  161:{l:'HIGH',msg:'SNMP — community string enum (try public/private/manager)',cves:[]},
+  389:{l:'MEDIUM',msg:'LDAP — unauthenticated bind possible; user enumeration',cves:[]},
+  443:{l:'LOW',msg:'HTTPS — check TLS version and cipher suites',cves:[]},
+  445:{l:'CRITICAL',msg:'SMB — EternalBlue / ransomware primary vector',cves:[{id:'CVE-2017-0144',d:'EternalBlue — SMBv1 RCE (WannaCry/NotPetya)'},{id:'CVE-2020-0796',d:'SMBGhost — SMBv3 compression RCE (Win10)'}]},
+  512:{l:'CRITICAL',msg:'rexec — plaintext remote exec, no auth by default',cves:[]},
+  513:{l:'CRITICAL',msg:'rlogin — trust-based auth, trivially bypassed',cves:[]},
+  514:{l:'CRITICAL',msg:'rsh — no authentication, direct shell access',cves:[]},
+  1099:{l:'HIGH',msg:'Java RMI — deserialization RCE vector',cves:[{id:'CVE-2011-3556',d:'Java RMI class loader RCE'}]},
+  1433:{l:'HIGH',msg:'MSSQL — brute SA; xp_cmdshell OS command exec',cves:[]},
+  1521:{l:'HIGH',msg:'Oracle DB — default creds common (scott/tiger)',cves:[]},
+  2049:{l:'HIGH',msg:'NFS — world-readable shares; no_root_squash',cves:[]},
+  2375:{l:'CRITICAL',msg:'Docker daemon — unauthenticated API = full host RCE',cves:[]},
+  3306:{l:'HIGH',msg:'MySQL — root with no password; UDF injection',cves:[]},
+  3389:{l:'HIGH',msg:'RDP — BlueKeep/DejaBlue; brute-force target',cves:[{id:'CVE-2019-0708',d:'BlueKeep — pre-auth RCE (WinXP–2008R2)'},{id:'CVE-2019-1182',d:'DejaBlue — RDP RCE (Win7/2019)'}]},
+  4444:{l:'CRITICAL',msg:'Metasploit default listener — active C2?',cves:[]},
+  5432:{l:'HIGH',msg:'PostgreSQL — default postgres superuser; COPY TO/FROM',cves:[]},
+  5900:{l:'HIGH',msg:'VNC — often no password or weak auth',cves:[]},
+  6379:{l:'CRITICAL',msg:'Redis — unauthenticated by default; write arbitrary files',cves:[{id:'CVE-2022-0543',d:'Redis Lua sandbox escape RCE (Debian/Ubuntu)'}]},
+  6667:{l:'MEDIUM',msg:'IRC — botnet C2 command channel common here',cves:[]},
+  8080:{l:'LOW',msg:'HTTP-Alt — admin panels; Tomcat manager',cves:[]},
+  8443:{l:'LOW',msg:'HTTPS-Alt — check TLS and admin panel paths',cves:[]},
+  9200:{l:'CRITICAL',msg:'Elasticsearch — unauthenticated API, full data access',cves:[]},
+  27017:{l:'CRITICAL',msg:'MongoDB — no auth by default on older installs',cves:[]},
+  27018:{l:'HIGH',msg:'MongoDB shard — same risk as 27017',cves:[]},
+};
+const RLVL={CRITICAL:4,HIGH:3,MEDIUM:2,LOW:1,INFO:0};
+function scoreHost(h){
+  let max=-1,findings=[];
+  h.ports.filter(p=>p.state==='open').forEach(p=>{
+    const r=RISKDB[p.port];
+    if(r){if(RLVL[r.l]>max)max=RLVL[r.l]; findings.push({port:p.port,proto:p.proto,service:p.service,version:p.version,...r});}
+  });
+  return{level:max>=0?['INFO','LOW','MEDIUM','HIGH','CRITICAL'][max]:'INFO',findings};
+}
+ 
+/* ── PARSERS ── */
+function parseText(raw){
+  const hosts=[],lines=raw.split('\n');let cur=null;
+  const sm={21:'ftp',22:'ssh',23:'telnet',25:'smtp',53:'dns',80:'http',110:'pop3',111:'rpc',135:'msrpc',139:'netbios-ssn',143:'imap',161:'snmp',389:'ldap',443:'https',445:'microsoft-ds',514:'syslog',1433:'ms-sql-s',1521:'oracle',2049:'nfs',2375:'docker',3306:'mysql',3389:'ms-wbt-server',4444:'shell',5432:'postgresql',5900:'vnc',6379:'redis',6667:'irc',8080:'http-proxy',8443:'https-alt',9200:'wap-wsp',27017:'mongodb'};
+  for(const l of lines){
+    const hm=l.match(/Nmap scan report for (.+)/);
+    if(hm){if(cur)hosts.push(cur);const hp=hm[1].trim(),ip=hp.match(/\(?([\d.]+|[\da-f:]+)\)?$/),hn=hp.match(/^([^(]+?)(?:\s+\(|$)/);cur={ip:ip?ip[1]:hp,hostname:hn&&hn[1].match(/[^\d.]/)?hn[1].trim():'',status:'up',os:'',ports:[]};continue;}
+    if(l.match(/Host is up/)&&cur)cur.status='up';
+    if(l.match(/Host is down/)&&cur)cur.status='down';
+    const om=l.match(/OS details?:\s*(.+)/i)||l.match(/Running:\s*(.+)/i);
+    if(om&&cur)cur.os=om[1].split(',')[0].trim().substring(0,50);
+    const pm=l.match(/^(\d+)\/(tcp|udp)\s+(open|closed|filtered|open\|filtered)\s+(\S+)?(.*)?/);
+    if(pm&&cur){const pn=parseInt(pm[1]);cur.ports.push({port:pn,proto:pm[2],state:pm[3].replace('|filtered','').trim(),service:pm[4]||sm[pn]||'unknown',version:(pm[5]||'').trim().substring(0,70)});}
+  }
+  if(cur)hosts.push(cur);return hosts;
+}
+function parseXML(raw){
+  try{const doc=new DOMParser().parseFromString(raw,'text/xml'),hosts=[];
+  doc.querySelectorAll('host').forEach(h=>{
+    const addr=h.querySelector('address[addrtype="ipv4"]')||h.querySelector('address[addrtype="ipv6"]');if(!addr)return;
+    const hn=h.querySelector('hostname'),st=h.querySelector('status'),os=h.querySelector('osmatch');
+    const host={ip:addr.getAttribute('addr'),hostname:hn?hn.getAttribute('name'):'',status:st?st.getAttribute('state'):'unknown',os:os?os.getAttribute('name'):'',ports:[]};
+    h.querySelectorAll('port').forEach(p=>{const s=p.querySelector('state'),sv=p.querySelector('service');host.ports.push({port:parseInt(p.getAttribute('portid')),proto:p.getAttribute('protocol'),state:s?s.getAttribute('state'):'unknown',service:sv?(sv.getAttribute('name')||'?'):'?',version:sv?[sv.getAttribute('product')||'',sv.getAttribute('version')||''].filter(Boolean).join(' '):''});});
+    hosts.push(host);});return hosts;}catch(e){return[];}
+}
+function parseGnmap(raw){
+  const hosts=[];
+  for(const l of raw.split('\n')){const m=l.match(/Host:\s*([\d.]+)\s*\(([^)]*)\).*Ports:\s*(.+)/);if(!m)continue;
+  const host={ip:m[1],hostname:m[2].trim(),status:'up',os:'',ports:[]};
+  m[3].split(',').forEach(p=>{const pm=p.trim().match(/(\d+)\/(open|closed|filtered)\/(\w+)\/\/(\w*)\/\/([^/]*)/);if(pm)host.ports.push({port:parseInt(pm[1]),proto:pm[3],state:pm[2],service:pm[4]||'?',version:pm[5].trim()});});
+  hosts.push(host);}return hosts;
+}
+function autoparse(raw){const t=raw.trim();if(t.startsWith('<?xml')||t.startsWith('<nmaprun')){const r=parseXML(t);if(r.length)return r;}if(t.includes('Host:')&&t.includes('Ports:')){const r=parseGnmap(t);if(r.length)return r;}return parseText(t);}
+ 
+/* ── DEMOS ── */
+const DEMOS={
+basic:`Nmap scan report for gateway (192.168.1.1)
+Host is up.
+PORT     STATE SERVICE  VERSION
+21/tcp   open  ftp      vsftpd 2.3.4
+22/tcp   open  ssh      OpenSSH 8.4p1 Debian
+23/tcp   open  telnet   Linux telnetd
+80/tcp   open  http     nginx 1.21.3
+443/tcp  open  https    nginx 1.21.3
+8080/tcp open  http-alt Apache Tomcat 9.0.54
+ 
+Nmap scan report for workstation (192.168.1.42)
+Host is up.
+PORT     STATE    SERVICE  VERSION
+22/tcp   open     ssh      OpenSSH 8.9p1 Ubuntu
+139/tcp  filtered netbios-ssn
+445/tcp  open     microsoft-ds Samba smbd 4.15.4
+3389/tcp open     ms-wbt-server Microsoft Terminal Services
+6379/tcp open     redis    Redis 2.8.0
+ 
+Nmap scan report for 192.168.1.100
+Host is up.
+PORT     STATE SERVICE  VERSION
+21/tcp   open  ftp      vsftpd 3.0.3
+22/tcp   open  ssh      OpenSSH 7.9p1 Raspbian
+3306/tcp open  mysql    MySQL 5.5.60
+6379/tcp open  redis    Redis key-value store
+9200/tcp open  http     Elasticsearch 1.4.2`,
+ 
+web:`Nmap scan report for web01.internal (10.0.0.10)
+Host is up.
+OS details: Linux 4.15
+PORT     STATE SERVICE VERSION
+22/tcp   open  ssh     OpenSSH 7.6p1
+80/tcp   open  http    Apache httpd 2.4.29
+443/tcp  open  https   Apache httpd 2.4.29
+8080/tcp open  http    Apache Tomcat 8.5.5
+ 
+Nmap scan report for web02.internal (10.0.0.11)
+Host is up.
+PORT     STATE SERVICE VERSION
+80/tcp   open  http    nginx 1.18.0
+443/tcp  open  https   nginx 1.18.0
+3000/tcp open  http    Node.js Express
+9200/tcp open  http    Elasticsearch 7.17
+ 
+Nmap scan report for db01.internal (10.0.0.20)
+Host is up.
+OS details: Linux 5.4
+PORT      STATE SERVICE    VERSION
+22/tcp    open  ssh        OpenSSH 8.2
+3306/tcp  open  mysql      MySQL 5.7.36
+5432/tcp  open  postgresql PostgreSQL 13.5
+27017/tcp open  mongodb    MongoDB 3.2.0
+6379/tcp  open  redis      Redis 6.2.6`,
+ 
+network:`Nmap scan report for 172.16.0.1
+Host is up.
+PORT     STATE SERVICE  VERSION
+22/tcp   open  ssh      Cisco SSH
+23/tcp   open  telnet   Cisco router telnetd
+80/tcp   open  http     Cisco IOS HTTP Server
+443/tcp  open  https    Cisco IOS HTTPS Server
+161/udp  open  snmp     net-snmp SNMPv3
+ 
+Nmap scan report for dc01.corp.local (172.16.0.5)
+Host is up.
+OS details: Windows Server 2019
+PORT     STATE SERVICE
+53/tcp   open  domain
+88/tcp   open  kerberos-sec
+135/tcp  open  msrpc
+389/tcp  open  ldap
+445/tcp  open  microsoft-ds
+636/tcp  open  ldapssl
+3389/tcp open  ms-wbt-server
+ 
+Nmap scan report for fileserver.corp.local (172.16.0.10)
+Host is up.
+OS details: Windows Server 2016
+PORT     STATE    SERVICE
+135/tcp  open     msrpc
+139/tcp  open     netbios-ssn
+445/tcp  open     microsoft-ds
+1433/tcp open     ms-sql-s
+3389/tcp filtered ms-wbt-server
+4444/tcp open     shell`};
+ 
+/* ── STATE ── */
+let allHosts=[],selectedHost=null,portFilter='all',searchQuery='',searchDebounce=null;
+let diffHosts=[],currentTab='hosts',collapsedHosts=new Set();
+let notes={},reviewed={},exploited={};
+const SK='nmap_ann';
+function saveAnn(){try{localStorage.setItem(SK,JSON.stringify({notes,reviewed,exploited}));}catch(e){}}
+function loadAnn(){try{const d=JSON.parse(localStorage.getItem(SK)||'{}');notes=d.notes||{};reviewed=d.reviewed||{};exploited=d.exploited||{};}catch(e){}}
+loadAnn();
+ 
+/* ── RENDER CORE ── */
+function render(hosts){
+  allHosts=hosts;if(!hosts.length)return;
+  searchQuery='';portFilter='all';collapsedHosts.clear();
+  const inp=document.getElementById('search-input');
+  if(inp){inp.value='';document.getElementById('search-clear').style.display='none';}
+  selectedHost=hosts[0];
+  renderSidebar(hosts);renderHeaderStats(hosts);
+  document.getElementById('export-btn').style.display='';
+  if(currentTab==='hosts')renderHostsTab(hosts);
+  else if(currentTab==='analysis')renderAnalysisTab();
+}
+ 
+function renderHeaderStats(hosts){
+  const open=hosts.flatMap(h=>h.ports).filter(p=>p.state==='open').length;
+  const crit=hosts.filter(h=>scoreHost(h).level==='CRITICAL').length;
+  document.getElementById('header-stats').innerHTML=
+    `<b>${hosts.length}</b> hosts &nbsp;·&nbsp; <b>${open}</b> open &nbsp;·&nbsp; `+
+    (crit?`<span style="color:var(--risk-crit)"><b>${crit}</b> critical</span>`:`<span style="color:var(--green)">clean</span>`);
+}
+ 
+function renderSidebar(hosts){
+  const sec=document.getElementById('host-list-section');
+  const list=document.getElementById('host-list');
+  sec.style.display='block';list.innerHTML='';
+  hosts.forEach((h,i)=>{
+    const oc=h.ports.filter(p=>p.state==='open').length,sc=scoreHost(h);
+    const div=document.createElement('div');
+    div.className='host-item'+(i===0?' active':'');
+    div.innerHTML=`<div class="host-dot${h.status==='down'?' down':''}"></div>
+      <div class="host-ip">${h.ip}${h.hostname?'<br><span style="font-size:9px;color:var(--text-dim)">'+h.hostname+'</span>':''}</div>
+      <div class="host-risk risk-${sc.level}">${sc.level.substring(0,4)}</div>
+      <div style="font-family:var(--mono);font-size:9px;color:var(--text-muted)">${oc}</div>`;
+    div.addEventListener('click',()=>{
+      document.querySelectorAll('.host-item').forEach(x=>x.classList.remove('active'));
+      div.classList.add('active');selectedHost=h;portFilter='all';
+      searchQuery='';const inp=document.getElementById('search-input');
+      if(inp){inp.value='';document.getElementById('search-clear').style.display='none';}
+      currentTab='hosts';setActiveTab('hosts');renderHostsTab(allHosts);
+    });
+    list.appendChild(div);
+  });
+}
+ 
+function showAllHosts(){
+  document.querySelectorAll('.host-item').forEach(x=>x.classList.remove('active'));
+  selectedHost=null;portFilter='all';currentTab='hosts';setActiveTab('hosts');renderHostsTab(allHosts);
+}
+ 
+function renderHostsTab(hosts){
+  const c=document.getElementById('content');
+  const ap=hosts.flatMap(h=>h.ports.map(p=>({...p,hostIp:h.ip})));
+  const open=ap.filter(p=>p.state==='open').length;
+  const filt=ap.filter(p=>p.state==='filtered').length;
+  const svcs=new Set(ap.filter(p=>p.state==='open').map(p=>p.service)).size;
+  const crit=hosts.filter(h=>scoreHost(h).level==='CRITICAL').length;
+  const high=hosts.filter(h=>scoreHost(h).level==='HIGH').length;
+  const activeHosts=selectedHost?[selectedHost]:hosts;
+ 
+  const banners=activeHosts.flatMap(h=>{
+    const{level,findings}=scoreHost(h);
+    if(!findings.length||RLVL[level]<2)return[];
+    return[{host:h,level,findings}];
+  }).map(b=>{
+    const cls=b.level==='CRITICAL'?'crit':b.level==='HIGH'?'high':'med';
+    const col=b.level==='CRITICAL'?'var(--risk-crit)':b.level==='HIGH'?'var(--risk-high)':'var(--orange)';
+    return`<div class="risk-banner ${cls}">
+      <div class="risk-banner-title" style="color:${col}">⚠ ${b.level} — ${b.host.ip}${b.host.hostname?' ('+b.host.hostname+')':''}</div>
+      <div class="risk-findings">${b.findings.map(f=>`<div class="risk-finding">
+        <span class="risk-finding-port">${f.port}/${f.proto}</span>
+        <span>${f.msg}</span>
+        ${f.cves.length?`<span class="cve-badge" onmouseenter="showCVE(event,${JSON.stringify(f.cves).replace(/"/g,'&quot;')})" onmouseleave="hideCVE()">CVE ▾</span>`:''}
+      </div>`).join('')}</div>
+    </div>`;
+  }).join('');
+ 
+  c.innerHTML=`<div class="animate-in">
+    <div class="metrics-grid">
+      <div class="metric-card" style="--accent:var(--green)"><div class="metric-label">Hosts Up</div><div class="metric-value">${hosts.filter(h=>h.status!=='down').length}</div></div>
+      <div class="metric-card" style="--accent:var(--cyan)"><div class="metric-label">Open Ports</div><div class="metric-value">${open}</div></div>
+      <div class="metric-card" style="--accent:var(--orange)"><div class="metric-label">Filtered</div><div class="metric-value">${filt}</div></div>
+      <div class="metric-card" style="--accent:var(--purple)"><div class="metric-label">Services</div><div class="metric-value">${svcs}</div></div>
+      <div class="metric-card" style="--accent:var(--risk-crit)"><div class="metric-label">Crit+High</div><div class="metric-value">${crit+high}</div></div>
+    </div>
+    ${banners}
+    ${renderHeatmap(ap)}
+    <div style="margin-top:20px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;padding-bottom:9px;border-bottom:1px solid var(--border)">
+        <div style="font-family:var(--mono);font-size:10px;color:var(--text-muted);letter-spacing:.09em">${selectedHost?'// HOST — '+selectedHost.ip:'// ALL HOSTS'} <span style="color:var(--text-dim)">(${activeHosts.length})</span></div>
+        <div class="filter-row">
+          <button class="filter-btn ${portFilter==='all'?'active-all':''}" onclick="setFilter('all')">ALL</button>
+          <button class="filter-btn ${portFilter==='open'?'active-open':''}" onclick="setFilter('open')">OPEN</button>
+          <button class="filter-btn ${portFilter==='filtered'?'active-filtered':''}" onclick="setFilter('filtered')">FILTERED</button>
+          <button class="filter-btn ${portFilter==='closed'?'active-closed':''}" onclick="setFilter('closed')">CLOSED</button>
+        </div>
+      </div>
+      ${activeHosts.map(h=>renderHostSection(h)).join('')}
+    </div>
+  </div>`;
+}
+ 
+function renderHeatmap(ap){
+  const pns=[...new Set(ap.map(p=>p.port))].sort((a,b)=>a-b);
+  const os=new Set(ap.filter(p=>p.state==='open').map(p=>p.port));
+  const cs=new Set(ap.filter(p=>p.state==='closed').map(p=>p.port));
+  const fs=new Set(ap.filter(p=>p.state==='filtered').map(p=>p.port));
+  const sm={};ap.forEach(p=>{if(p.service&&p.service!=='?')sm[p.port]=p.service;});
+  const cells=pns.map(n=>{
+    const cls=os.has(n)?'open':cs.has(n)?'closed':fs.has(n)?'filtered':'empty';
+    const flag=RISKDB[n]&&os.has(n)?'flag':'';
+    const lbl=(sm[n]?`${n}/${sm[n]}`:String(n))+(flag?' ⚠ '+RISKDB[n].l:'');
+    return`<div class="heat-cell ${cls} ${flag}" title="${lbl}"></div>`;
+  }).join('');
+  return`<div class="port-heatmap">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+      <div class="section-title" style="margin:0">Port Map — ${pns.length} scanned</div>
+      <div style="display:flex;gap:10px;font-family:var(--mono);font-size:9px;color:var(--text-muted)">
+        <span><span style="color:var(--green)">▪</span> open</span>
+        <span><span style="color:var(--orange)">▪</span> filtered</span>
+        <span><span style="color:var(--red)">▪</span> closed</span>
+        <span><span style="color:var(--risk-crit)">▪</span> flagged</span>
+      </div>
+    </div>
+    <div class="heatmap-grid">${cells}</div>
+  </div>`;
+}
+ 
+function renderHostSection(host){
+  const cid='h-'+host.ip.replace(/\./g,'-');
+  const isc=collapsedHosts.has(host.ip);
+  const ports=[...host.ports.filter(p=>portFilter==='all'||p.state===portFilter)].sort((a,b)=>a.port-b.port);
+  const sc=scoreHost(host);
+  const hn=notes['h:'+host.ip]||'';
+ 
+  const rows=ports.map(p=>{
+    const stc=p.state==='open'?'state-open':p.state==='closed'?'state-closed':'state-filtered';
+    const rp=RISKDB[p.port];const flag=rp&&p.state==='open';
+    const nk=`${host.ip}:${p.port}:${p.proto}`;
+    const rv=!!reviewed[nk],ev=!!exploited[nk];
+    return`<tr class="${flag?'flag-row':''}">
+      <td><span class="port-num">${p.port}</span></td>
+      <td><span class="proto-badge proto-${p.proto}">${p.proto.toUpperCase()}</span></td>
+      <td><span class="state-badge ${stc}"><span class="state-dot"></span>${p.state}</span></td>
+      <td><div class="service-name">${p.service}${flag?` <span class="flag-icon" title="${rp.msg}">⚠</span>`:''}${rp&&rp.cves.length?` <span class="cve-badge" onmouseenter="showCVE(event,${JSON.stringify(rp.cves).replace(/"/g,'&quot;')})" onmouseleave="hideCVE()">CVE ▾</span>`:''}</div>${p.version?`<div class="service-version">${p.version}</div>`:''}</td>
+      <td><input class="note-input" type="text" placeholder="note…" value="${esc(notes[nk]||'')}" onchange="saveNote('${nk}',this.value)"></td>
+      <td style="white-space:nowrap">
+        <span class="status-badge${rv?' reviewed':''}" onclick="toggleR('${nk}',this)">${rv?'✓ reviewed':'review'}</span>
+        <span class="status-badge${ev?' exploited':''}" onclick="toggleE('${nk}',this)" style="margin-left:4px">${ev?'✓ pwned':'exploit'}</span>
+      </td>
+    </tr>`;
+  }).join('');
+ 
+  return`<div class="host-section animate-in" id="${cid}">
+    <div class="host-header" onclick="toggleCollapse('${host.ip}','${cid}')">
+      <div class="host-badge">${host.ip}</div>
+      ${host.hostname?`<div class="host-hostname">${host.hostname}</div>`:''}
+      ${host.os?`<div class="host-os-badge">${host.os.substring(0,38)}</div>`:''}
+      <div class="host-risk risk-${sc.level}" style="margin-left:4px">${sc.level}</div>
+      <div class="host-collapse-btn${isc?' collapsed':''}">▾</div>
+    </div>
+    <div class="host-body${isc?' collapsed':''}">
+      <div style="padding:6px 12px;border-bottom:1px solid var(--border);">
+        <input class="note-input" style="font-size:11px;width:100%" placeholder="Host notes…" value="${esc(hn)}" onchange="saveNote('h:${host.ip}',this.value)">
+      </div>
+      ${ports.length===0?'<div style="padding:12px;font-family:var(--mono);font-size:11px;color:var(--text-dim)">No ports match filter.</div>':
+      `<table class="ports-table">
+        <thead><tr><th>PORT</th><th>PROTO</th><th>STATE</th><th>SERVICE / VERSION</th><th>NOTES</th><th>STATUS</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>`}
+    </div>
+  </div>`;
+}
+ 
+/* ── ANALYSIS TAB ── */
+function renderAnalysisTab(){
+  if(!allHosts.length)return;
+  const c=document.getElementById('content');
+  const op=allHosts.flatMap(h=>h.ports.map(p=>({...p,hostIp:h.ip}))).filter(p=>p.state==='open');
+ 
+  // service inventory
+  const sm={};
+  op.forEach(p=>{const k=p.service+'::'+p.version;if(!sm[k])sm[k]={service:p.service,version:p.version,hosts:[],ports:[]};if(!sm[k].hosts.includes(p.hostIp))sm[k].hosts.push(p.hostIp);if(!sm[k].ports.includes(p.port))sm[k].ports.push(p.port);});
+  const svcRows=Object.values(sm).sort((a,b)=>b.hosts.length-a.hosts.length).map(s=>`
+    <div class="svc-row" onclick="applyHint('${s.service}');switchTab('hosts')">
+      <span class="port-num">${s.ports.join(',')}</span>
+      <span class="service-name">${s.service}</span>
+      <span class="service-version">${s.version||'—'}</span>
+      <span style="text-align:right;color:var(--text-muted);font-size:10px">${s.hosts.length}</span>
+    </div>`).join('');
+ 
+  // common ports bar chart
+  const pm={};op.forEach(p=>{if(!pm[p.port])pm[p.port]={count:0,svc:p.service};pm[p.port].count++;pm[p.port].svc=p.service;});
+  const top=Object.entries(pm).sort((a,b)=>b[1].count-a[1].count).slice(0,14);
+  const mx=top[0]?.[1]?.count||1;
+  const portBars=top.map(([port,{count,svc}])=>{
+    const rp=RISKDB[parseInt(port)];
+    const col=rp?(rp.l==='CRITICAL'?'var(--risk-crit)':rp.l==='HIGH'?'var(--risk-high)':rp.l==='MEDIUM'?'var(--orange)':'var(--cyan)'):'var(--cyan)';
+    return`<div class="bar-row" onclick="applyHint('${port}');switchTab('hosts')">
+      <span class="port-num" style="width:46px">${port}</span>
+      <span style="color:var(--text-muted);font-size:10px;width:78px">${svc}</span>
+      <div class="bar-track"><div class="bar-fill" style="width:${Math.round(count/mx*100)}%;background:${col}"></div></div>
+      <span style="font-size:10px;color:var(--text-muted);width:38px;text-align:right">${count}/${allHosts.length}</span>
+    </div>`;
+  }).join('');
+ 
+  // risk classification
+  const byLvl={CRITICAL:[],HIGH:[],MEDIUM:[],LOW:[],INFO:[]};
+  allHosts.forEach(h=>{byLvl[scoreHost(h).level].push(h);});
+  const riskRows=Object.entries(byLvl).filter(([,hs])=>hs.length).map(([lvl,hs])=>`
+    <div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid rgba(30,37,48,.35)">
+      <span class="host-risk risk-${lvl}" style="width:66px;text-align:center">${lvl}</span>
+      <div style="display:flex;flex-wrap:wrap">${hs.map(h=>`<span class="host-tag" onclick="selectAndView('${h.ip}')">${h.ip}</span>`).join('')}</div>
+    </div>`).join('');
+ 
+  const totalCrit=allHosts.flatMap(h=>scoreHost(h).findings).filter(f=>f.l==='CRITICAL').length;
+  const totalHigh=allHosts.flatMap(h=>scoreHost(h).findings).filter(f=>f.l==='HIGH').length;
+  const score=Math.min(100,totalCrit*20+totalHigh*8+op.length);
+ 
+  c.innerHTML=`<div class="analysis-page">
+    <div class="metrics-grid">
+      <div class="metric-card" style="--accent:var(--risk-crit)"><div class="metric-label">Critical</div><div class="metric-value">${totalCrit}</div></div>
+      <div class="metric-card" style="--accent:var(--risk-high)"><div class="metric-label">High</div><div class="metric-value">${totalHigh}</div></div>
+      <div class="metric-card" style="--accent:var(--cyan)"><div class="metric-label">Services</div><div class="metric-value">${Object.keys(sm).length}</div></div>
+      <div class="metric-card" style="--accent:var(--orange)"><div class="metric-label">Attack Score</div><div class="metric-value">${score}</div></div>
+      <div class="metric-card" style="--accent:var(--green)"><div class="metric-label">Open Ports</div><div class="metric-value">${op.length}</div></div>
+    </div>
+    <div class="analysis-card">
+      <div class="analysis-card-header">Risk Classification by Host</div>
+      <div class="analysis-card-body">${riskRows}</div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+      <div class="analysis-card">
+        <div class="analysis-card-header">Most Common Open Ports</div>
+        <div class="analysis-card-body">${portBars}</div>
+      </div>
+      <div class="analysis-card">
+        <div class="analysis-card-header">Service Inventory <span style="color:var(--text-dim);font-size:9px">(click to search)</span></div>
+        <div class="analysis-card-body" style="padding:0">
+          <div style="display:grid;grid-template-columns:72px 130px 1fr 55px;padding:5px 16px;border-bottom:1px solid var(--border)">
+            <span style="font-family:var(--mono);font-size:9px;color:var(--text-dim)">PORT</span>
+            <span style="font-family:var(--mono);font-size:9px;color:var(--text-dim)">SERVICE</span>
+            <span style="font-family:var(--mono);font-size:9px;color:var(--text-dim)">VERSION</span>
+            <span style="font-family:var(--mono);font-size:9px;color:var(--text-dim);text-align:right">HOSTS</span>
+          </div>${svcRows}
+        </div>
+      </div>
+    </div>
+  </div>`;
+}
+ 
+/* ── DIFF TAB ── */
+function renderDiffTab(){
+  const c=document.getElementById('content');
+  if(!allHosts.length){c.innerHTML=`<div class="empty-state"><div class="empty-terminal"><div style="color:var(--text-dim)">Load a current scan first.</div></div></div>`;return;}
+  if(!diffHosts.length){c.innerHTML=`<div class="empty-state"><div class="empty-terminal"><div><span class="cg">→</span> Load a baseline scan</div><div style="color:var(--text-dim)">  in the sidebar to compare.</div></div></div>`;return;}
+ 
+  const results=computeDiff(diffHosts,allHosts);
+  const tn=results.flatMap(r=>r.ports).filter(p=>p.diff==='new').length;
+  const tr=results.flatMap(r=>r.ports).filter(p=>p.diff==='removed').length;
+  const tc=results.flatMap(r=>r.ports).filter(p=>p.diff==='changed').length;
+  const nh=results.filter(r=>r.hd==='new').length;
+  const rh=results.filter(r=>r.hd==='removed').length;
+ 
+  const groups=results.map(r=>{
+    const rows=r.ports.map(p=>{
+      const stc=p.state==='open'?'state-open':p.state==='closed'?'state-closed':'state-filtered';
+      const rc=p.diff==='new'?'diff-new':p.diff==='removed'?'diff-removed':p.diff==='changed'?'diff-changed':'';
+      const bc=p.diff==='new'?'diff-new-b':p.diff==='removed'?'diff-rem-b':p.diff==='changed'?'diff-chg-b':'';
+      const ci=p.diff==='changed'?`<span style="font-size:9px;color:var(--orange)">${p.from}→${p.to}</span>`:'';
+      return`<div class="diff-row ${rc}">
+        <span class="port-num">${p.port}</span>
+        <span class="proto-badge proto-${p.proto||'tcp'}">${(p.proto||'tcp').toUpperCase()}</span>
+        <span class="state-badge ${stc}" style="display:inline-flex"><span class="state-dot"></span>${p.state}</span>
+        <span class="service-name">${p.service}</span>
+        <span>${ci}</span>
+        <span><span class="diff-badge ${bc}">${p.diff.toUpperCase()}</span></span>
+      </div>`;
+    }).join('');
+    const nn=r.ports.filter(p=>p.diff==='new').length;
+    const nr=r.ports.filter(p=>p.diff==='removed').length;
+    const nc=r.ports.filter(p=>p.diff==='changed').length;
+    const hb=r.hd==='new'?`<span class="diff-badge diff-new-b" style="margin-left:6px">NEW HOST</span>`:r.hd==='removed'?`<span class="diff-badge diff-rem-b" style="margin-left:6px">GONE</span>`:'';
+    return`<div class="diff-group">
+      <div class="diff-group-header">
+        <span class="search-group-ip">${r.ip}</span>
+        ${r.hostname?`<span class="search-group-hostname">${r.hostname}</span>`:''}
+        ${hb}
+        <div style="margin-left:auto;display:flex;gap:8px">
+          ${nn?`<span class="diff-stat-new">+${nn}</span>`:''}
+          ${nr?`<span class="diff-stat-rem">-${nr}</span>`:''}
+          ${nc?`<span class="diff-stat-chg">~${nc}</span>`:''}
+        </div>
+      </div>
+      ${rows||'<div style="padding:9px 12px;font-family:var(--mono);font-size:10px;color:var(--text-dim)">No port changes.</div>'}
+    </div>`;
+  }).join('');
+ 
+  c.innerHTML=`<div class="diff-page">
+    <div class="metrics-grid">
+      <div class="metric-card" style="--accent:var(--green)"><div class="metric-label">New Ports</div><div class="metric-value">${tn}</div></div>
+      <div class="metric-card" style="--accent:var(--red)"><div class="metric-label">Closed Ports</div><div class="metric-value">${tr}</div></div>
+      <div class="metric-card" style="--accent:var(--orange)"><div class="metric-label">Changed</div><div class="metric-value">${tc}</div></div>
+      <div class="metric-card" style="--accent:var(--cyan)"><div class="metric-label">New Hosts</div><div class="metric-value">${nh}</div></div>
+      <div class="metric-card" style="--accent:var(--text-muted)"><div class="metric-label">Gone Hosts</div><div class="metric-value">${rh}</div></div>
+    </div>
+    ${groups||'<div class="no-results">No differences found between scans.</div>'}
+  </div>`;
+}
+ 
+function computeDiff(base,cur){
+  const out=[];
+  const allIPs=new Set([...base.map(h=>h.ip),...cur.map(h=>h.ip)]);
+  allIPs.forEach(ip=>{
+    const bh=base.find(h=>h.ip===ip),ch=cur.find(h=>h.ip===ip);
+    const hd=!bh?'new':!ch?'removed':'same';
+    const ref=ch||bh;const ports=[];
+    const bp=bh?bh.ports:[];const cp=ch?ch.ports:[];
+    const ks=new Set([...bp.map(p=>p.port+'/'+p.proto),...cp.map(p=>p.port+'/'+p.proto)]);
+    ks.forEach(k=>{
+      const b=bp.find(p=>p.port+'/'+p.proto===k),c=cp.find(p=>p.port+'/'+p.proto===k);
+      if(!b&&c)ports.push({...c,diff:'new'});
+      else if(b&&!c)ports.push({...b,diff:'removed'});
+      else if(b&&c&&b.state!==c.state)ports.push({...c,diff:'changed',from:b.state,to:c.state});
+      else if(b&&c&&b.version!==c.version&&c.version)ports.push({...c,diff:'changed',from:b.version||'?',to:c.version});
+    });
+    if(ports.length||hd!=='same')out.push({ip,hostname:ref?.hostname||'',hd,ports:ports.sort((a,b)=>a.port-b.port)});
+  });
+  return out.sort((a,b)=>{const o={new:0,removed:1,same:2};return(o[a.hd]||2)-(o[b.hd]||2);});
+}
+ 
+/* ── SEARCH ── */
+function runSearch(query){
+  const q=query.trim().toLowerCase();if(!q||!allHosts.length)return null;
+  const ip=/^\d+$/.test(q),ir=/^\d+-\d+$/.test(q);
+  return allHosts.flatMap(host=>{
+    const hs=(host.ip+' '+host.hostname+' '+host.os).toLowerCase();
+    const mp=host.ports.filter(p=>{
+      if(ip)return String(p.port)===q;
+      if(ir){const[lo,hi]=q.split('-').map(Number);return p.port>=lo&&p.port<=hi;}
+      return String(p.port).includes(q)||(p.service+' '+p.version).toLowerCase().includes(q)||p.state.toLowerCase()===q;
+    });
+    if(mp.length)return[{host,matchedPorts:mp}];
+    if(!ip&&hs.includes(q))return[{host,matchedPorts:host.ports}];
+    return[];
+  });
+}
+function hl(text,q){if(!q)return String(text);const e=q.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');return String(text).replace(new RegExp(`(${e})`,'gi'),'<span class="match-highlight">$1</span>');}
+ 
+function renderSearchPage(query){
+  const results=runSearch(query);const c=document.getElementById('content');
+  if(!results){c.innerHTML='';return;}
+  const tot=results.reduce((s,r)=>s+r.matchedPorts.length,0);
+  const groups=results.length===0
+    ?`<div class="no-results">No results for <span>"${query}"</span></div>`
+    :results.map(r=>{
+      const rows=[...r.matchedPorts].sort((a,b)=>a.port-b.port).map(p=>{
+        const stc=p.state==='open'?'state-open':p.state==='closed'?'state-closed':'state-filtered';
+        const rp=RISKDB[p.port];
+        return`<div class="search-result-row">
+          <span class="port-num">${hl(p.port,query)}</span>
+          <span class="proto-badge proto-${p.proto}" style="display:inline-block">${p.proto.toUpperCase()}</span>
+          <span class="state-badge ${stc}" style="display:inline-flex"><span class="state-dot"></span>${p.state}</span>
+          <span><span class="service-name">${hl(p.service,query)}</span>${p.version?`<span class="service-version" style="margin-left:7px">${hl(p.version,query)}</span>`:''}${rp&&p.state==='open'?` <span class="flag-icon" title="${rp.msg}">⚠</span>`:''}</span>
+        </div>`;
+      }).join('');
+      return`<div class="search-group">
+        <div class="search-group-header">
+          <span class="search-group-ip">${hl(r.host.ip,query)}</span>
+          ${r.host.hostname?`<span class="search-group-hostname">${hl(r.host.hostname,query)}</span>`:''}
+          ${r.host.os?`<span class="search-group-os">${r.host.os.substring(0,32)}</span>`:''}
+          <span class="search-match-count">${r.matchedPorts.length} match${r.matchedPorts.length!==1?'es':''}</span>
+        </div>${rows}
+      </div>`;
+    }).join('');
+  c.innerHTML=`<div class="search-results-page">
+    <div class="search-header">
+      <span style="font-family:var(--mono);font-size:10px;color:var(--text-muted);letter-spacing:.1em">// SEARCH</span>
+      <span class="search-query-display">${query}</span>
+      <span class="search-count">${tot} result${tot!==1?'s':''} across ${results.length} host${results.length!==1?'s':''}</span>
+      <button class="search-back" onclick="clearSearch()">✕ CLEAR</button>
+    </div>
+    ${groups}
+  </div>`;
+}
+ 
+/* ── EXPORT ── */
+let etab='csv';
+function openExport(){
+  etab='csv';
+  const ov=document.createElement('div');ov.className='modal-overlay';ov.id='exp-modal';
+  ov.innerHTML=`<div class="modal">
+    <div class="modal-header"><span class="modal-title">EXPORT</span><button class="modal-close" onclick="closeExport()">✕</button></div>
+    <div class="modal-body">
+      <div class="export-tabs">
+        <button class="etab active" id="etab-csv" onclick="swET('csv')">CSV</button>
+        <button class="etab" id="etab-md" onclick="swET('md')">Markdown</button>
+        <button class="etab" id="etab-exec" onclick="swET('exec')">Exec Summary</button>
+        <button class="etab" id="etab-host" onclick="swET('host')">Host Report</button>
+      </div>
+      <pre class="export-preview" id="exp-preview">${esc(buildExport('csv'))}</pre>
+    </div>
+    <div class="modal-footer">
+      <button class="mbtn" onclick="copyExp()">⎘ Copy</button>
+      <button class="mbtn p" onclick="dlExp()">⬇ Download</button>
+    </div>
+  </div>`;
+  ov.addEventListener('click',e=>{if(e.target===ov)closeExport();});
+  document.body.appendChild(ov);
+}
+function swET(t){etab=t;document.querySelectorAll('.etab').forEach(x=>x.classList.remove('active'));document.getElementById('etab-'+t).classList.add('active');document.getElementById('exp-preview').textContent=buildExport(t);}
+function buildExport(t){
+  const hosts=selectedHost?[selectedHost]:allHosts;
+  if(t==='csv'){
+    const rows=['IP,Hostname,OS,Port,Proto,State,Service,Version,Risk,Note'];
+    hosts.forEach(h=>h.ports.forEach(p=>{const rp=RISKDB[p.port];const nk=`${h.ip}:${p.port}:${p.proto}`;rows.push(`"${h.ip}","${h.hostname}","${h.os}","${p.port}","${p.proto}","${p.state}","${p.service}","${p.version}","${rp?rp.l:''}","${(notes[nk]||'').replace(/"/g,'""')}"`)}));
+    return rows.join('\n');
+  }
+  if(t==='md'){
+    let md='# nmap Scan Results\n\n';
+    hosts.forEach(h=>{
+      const sc=scoreHost(h);
+      md+=`## ${h.ip}${h.hostname?' — '+h.hostname:''}\n`;
+      if(h.os)md+=`**OS:** ${h.os}  \n`;
+      md+=`**Risk:** ${sc.level}\n\n| Port | Proto | State | Service | Version |\n|------|-------|-------|---------|------|\n`;
+      h.ports.forEach(p=>md+=`| ${p.port} | ${p.proto} | ${p.state} | ${p.service} | ${p.version||'—'} |\n`);
+      if(sc.findings.length){md+='\n**⚠ Findings:**\n';sc.findings.forEach(f=>md+=`- **${f.port}/${f.proto}** (${f.l}): ${f.msg}\n`);}
+      const hn=notes['h:'+h.ip];if(hn)md+=`\n**Notes:** ${hn}\n`;
+      md+='\n---\n\n';
+    });
+    return md;
+  }
+  if(t==='exec'){
+    const oc=hosts.flatMap(h=>h.ports).filter(p=>p.state==='open').length;
+    const af=hosts.flatMap(h=>scoreHost(h).findings.map(f=>({...f,hostIp:h.ip})));
+    const cf=af.filter(f=>f.l==='CRITICAL');
+    let txt=`EXECUTIVE SUMMARY — Network Reconnaissance\n${'='.repeat(46)}\n\nScope: ${hosts.length} host${hosts.length!==1?'s':''} scanned\nOpen ports: ${oc}\nCritical-risk hosts: ${hosts.filter(h=>scoreHost(h).level==='CRITICAL').length}\nHigh-risk hosts: ${hosts.filter(h=>scoreHost(h).level==='HIGH').length}\n\n`;
+    if(cf.length){txt+=`CRITICAL FINDINGS\n${'-'.repeat(28)}\n`;cf.forEach(f=>txt+=`• ${f.hostIp}:${f.port} (${f.service}) — ${f.msg}\n`);txt+='\n';}
+    txt+=`RISK BREAKDOWN\n${'-'.repeat(28)}\n`;
+    ['CRITICAL','HIGH','MEDIUM','LOW','INFO'].forEach(l=>{const n=hosts.filter(h=>scoreHost(h).level===l).length;if(n)txt+=`${l.padEnd(9)}: ${n} host${n!==1?'s':''}\n`;});
+    txt+=`\nRECOMMENDATIONS\n${'-'.repeat(28)}\n`;
+    const recs=[...new Set(af.filter(f=>RLVL[f.l]>=2).map(f=>f.msg))].slice(0,10);
+    recs.forEach(r=>txt+=`• ${r}\n`);
+    return txt;
+  }
+  if(t==='host'){
+    return hosts.map(h=>{
+      const sc=scoreHost(h);
+      let txt=`HOST: ${h.ip}${h.hostname?' ('+h.hostname+')':''}\n${'─'.repeat(38)}\n`;
+      if(h.os)txt+=`OS:   ${h.os}\n`;
+      txt+=`Risk: ${sc.level}\n\n`;
+      h.ports.filter(p=>p.state==='open').forEach(p=>{
+        const rp=RISKDB[p.port];
+        txt+=`${String(p.port).padEnd(6)} ${p.proto.padEnd(4)} ${p.service.padEnd(18)} ${p.version}\n`;
+        if(rp)txt+=`       ⚠ ${rp.msg}\n`;
+        const nk=`${h.ip}:${p.port}:${p.proto}`;
+        if(notes[nk])txt+=`       📝 ${notes[nk]}\n`;
+        if(reviewed[nk])txt+=`       ✓ Reviewed\n`;
+        if(exploited[nk])txt+=`       💀 Exploited\n`;
+      });
+      const hn=notes['h:'+h.ip];if(hn)txt+=`\nHost notes: ${hn}\n`;
+      return txt;
+    }).join('\n\n');
+  }
+  return'';
+}
+function copyExp(){navigator.clipboard.writeText(buildExport(etab)).then(()=>toast('Copied!'));}
+function dlExp(){const ext={csv:'csv',md:'md',exec:'txt',host:'txt'}[etab]||'txt';const b=new Blob([buildExport(etab)],{type:'text/plain'});const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=`nmap_export.${ext}`;a.click();}
+function closeExport(){document.getElementById('exp-modal')?.remove();}
+ 
+/* ── ANNOTATIONS ── */
+function saveNote(k,v){notes[k]=v;saveAnn();}
+function toggleR(k,el){reviewed[k]=!reviewed[k];if(!reviewed[k])delete reviewed[k];el.className='status-badge'+(reviewed[k]?' reviewed':'');el.textContent=reviewed[k]?'✓ reviewed':'review';saveAnn();}
+function toggleE(k,el){exploited[k]=!exploited[k];if(!exploited[k])delete exploited[k];el.className='status-badge'+(exploited[k]?' exploited':'');el.textContent=exploited[k]?'✓ pwned':'exploit';saveAnn();}
+ 
+/* ── CVE POPUP ── */
+function showCVE(e,cves){hideCVE();if(!cves||!cves.length)return;const p=document.createElement('div');p.className='cve-popup';p.id='cve-popup';p.innerHTML=`<div class="cve-popup-title">⚠ Known CVEs</div>`+cves.map(c=>`<div class="cve-entry"><div class="cve-id">${c.id}</div><div>${c.d}</div></div>`).join('');document.body.appendChild(p);const r=e.target.getBoundingClientRect();p.style.left=Math.min(r.left,window.innerWidth-300)+'px';p.style.top=(r.bottom+5)+'px';}
+function hideCVE(){document.getElementById('cve-popup')?.remove();}
+ 
+/* ── TABS ── */
+function switchTab(tab){currentTab=tab;setActiveTab(tab);clearSearch();if(tab==='hosts'){if(allHosts.length)renderHostsTab(allHosts);}else if(tab==='analysis'){renderAnalysisTab();}else if(tab==='diff'){renderDiffTab();}}
+function setActiveTab(tab){document.querySelectorAll('.nav-tab').forEach(t=>t.classList.remove('active'));document.getElementById('tab-'+tab)?.classList.add('active');}
+ 
+/* ── COLLAPSE ── */
+function toggleCollapse(ip,cid){if(collapsedHosts.has(ip))collapsedHosts.delete(ip);else collapsedHosts.add(ip);const el=document.getElementById(cid);if(!el)return;el.querySelector('.host-body')?.classList.toggle('collapsed');el.querySelector('.host-collapse-btn')?.classList.toggle('collapsed');}
+function selectAndView(ip){const h=allHosts.find(x=>x.ip===ip);if(!h)return;selectedHost=h;switchTab('hosts');document.querySelectorAll('.host-item').forEach(x=>x.classList.toggle('active',x.querySelector('.host-ip')?.textContent.includes(ip)));}
+ 
+/* ── SEARCH HANDLERS ── */
+function onSearchInput(val){document.getElementById('search-clear').style.display=val?'block':'none';hideHints();clearTimeout(searchDebounce);searchDebounce=setTimeout(()=>{searchQuery=val.trim();if(searchQuery)renderSearchPage(searchQuery);else if(currentTab==='hosts')renderHostsTab(allHosts);},150);}
+function onSearchKey(e){if(e.key==='Escape')clearSearch();if(e.key==='Enter'){hideHints();const v=e.target.value.trim();if(v){searchQuery=v;renderSearchPage(v);}}}
+function clearSearch(){searchQuery='';const inp=document.getElementById('search-input');inp.value='';document.getElementById('search-clear').style.display='none';hideHints();if(allHosts.length){if(currentTab==='hosts')renderHostsTab(allHosts);else if(currentTab==='analysis')renderAnalysisTab();else if(currentTab==='diff')renderDiffTab();}}
+function showHints(){if(!allHosts.length)return;document.getElementById('search-hints').classList.add('visible');document.addEventListener('click',ohc,true);}
+function hideHints(){document.getElementById('search-hints').classList.remove('visible');document.removeEventListener('click',ohc,true);}
+function ohc(e){if(!document.getElementById('search-wrap')?.contains(e.target))hideHints();}
+function applyHint(q){const inp=document.getElementById('search-input');inp.value=q;document.getElementById('search-clear').style.display='block';hideHints();searchQuery=q;currentTab='hosts';setActiveTab('hosts');renderSearchPage(q);}
+function setFilter(f){portFilter=f;searchQuery='';const inp=document.getElementById('search-input');if(inp){inp.value='';document.getElementById('search-clear').style.display='none';}renderHostsTab(allHosts);}
+ 
+/* ── KEYBOARD ── */
+let kbOpen=false;
+document.addEventListener('keydown',e=>{
+  const tag=document.activeElement?.tagName;
+  if(tag==='INPUT'||tag==='TEXTAREA')return;
+  if(e.key==='?'){kbOpen?closeKb():openKb();return;}
+  if(e.key==='/'||e.key==='s'){e.preventDefault();document.getElementById('search-input')?.focus();return;}
+  if(e.key==='Escape'){closeKb();clearSearch();closeExport();hideCVE();return;}
+  if(e.key==='e'&&allHosts.length){openExport();return;}
+  if(e.key==='1')switchTab('hosts');
+  if(e.key==='2')switchTab('analysis');
+  if(e.key==='3')switchTab('diff');
+  if((e.key==='j'||e.key==='k')&&allHosts.length){
+    const idx=selectedHost?allHosts.indexOf(selectedHost):0;
+    const next=e.key==='j'?Math.min(idx+1,allHosts.length-1):Math.max(idx-1,0);
+    selectAndView(allHosts[next].ip);
+  }
+});
+function openKb(){kbOpen=true;const el=document.createElement('div');el.className='kbd-help';el.id='kb-help';el.innerHTML=`<div class="kbd-help-title">KEYBOARD SHORTCUTS</div><div class="kbd-row"><span class="kbd-key">/  s</span><span>focus search</span></div><div class="kbd-row"><span class="kbd-key">j / k</span><span>next / prev host</span></div><div class="kbd-row"><span class="kbd-key">1 2 3</span><span>hosts / analysis / diff</span></div><div class="kbd-row"><span class="kbd-key">e</span><span>open export</span></div><div class="kbd-row"><span class="kbd-key">Esc</span><span>close / clear</span></div><div class="kbd-row"><span class="kbd-key">?</span><span>toggle this panel</span></div>`;document.body.appendChild(el);}
+function closeKb(){kbOpen=false;document.getElementById('kb-help')?.remove();}
+ 
+/* ── TOAST ── */
+function toast(msg){const el=document.createElement('div');el.className='toast';el.textContent=msg;document.body.appendChild(el);setTimeout(()=>el.remove(),1800);}
+ 
+/* ── HELPERS ── */
+function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+ 
+/* ── LOAD / PARSE ── */
+function parseFromTextarea(){const raw=document.getElementById('paste-area').value.trim();if(!raw)return;const h=autoparse(raw);if(h.length){portFilter='all';render(h);}else alert('Could not parse nmap output.');}
+function loadDemo(k){portFilter='all';render(autoparse(DEMOS[k]));}
+ 
+document.getElementById('file-input').addEventListener('change',e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=ev=>{portFilter='all';const h=autoparse(ev.target.result);if(h.length)render(h);else alert('No hosts found.');};r.readAsText(f);});
+document.getElementById('diff-file-input').addEventListener('change',e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=ev=>{diffHosts=autoparse(ev.target.result);if(diffHosts.length){document.getElementById('diff-loaded').textContent=`✓ ${f.name} (${diffHosts.length} hosts)`;document.getElementById('diff-loaded').style.display='block';toast(`Baseline: ${diffHosts.length} hosts loaded`);}};r.readAsText(f);});
+const dz=document.getElementById('drop-zone');
+dz.addEventListener('dragover',e=>{e.preventDefault();dz.classList.add('drag-over');});
+dz.addEventListener('dragleave',()=>dz.classList.remove('drag-over'));
+dz.addEventListener('drop',e=>{e.preventDefault();dz.classList.remove('drag-over');const f=e.dataTransfer.files[0];if(!f)return;const r=new FileReader();r.onload=ev=>{portFilter='all';const h=autoparse(ev.target.result);if(h.length)render(h);};r.readAsText(f);});
+</script>
+</body>
+</html>
